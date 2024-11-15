@@ -1,3 +1,3 @@
-# MobileVitSOD
+# HASNet
 
 # Comming soon!
