@@ -2,6 +2,14 @@
 The official code for the paper ‘Hybrid aggregation strategy with double inverted residual blocks for lightweight salient object detection’
 # 
 
+## Saliency maps 
+[Google Drive](https://drive.google.com/drive/folders/1E7rC8N_vNplL_-T7G6RrQYTPkehoTsQH?usp=sharing)
+
+
+
+
+
+
 ### If you think this work is helpful, please cite
 
 ```latex
