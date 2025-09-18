@@ -2,7 +2,7 @@ from torch.nn import functional as F
 from torch import nn
 import torch
 from mobilevit_v3.mobilevit import get_mobilevit_v3_xxs, get_mobilevit_v3_xs, get_mobilevit_v3_s
-
+import math
 
 class IRB_(nn.Module):
     """
@@ -247,7 +247,7 @@ def folding(x, patch_h, patch_w, info_dict):
         )
     return x
 
-class MobileVitXSWithPyramidAttentionLight43Res(nn.Module):
+class HASNetXS(nn.Module):
     """
         v43+IRB残差
     """
@@ -289,6 +289,72 @@ class MobileVitXSWithPyramidAttentionLight43Res(nn.Module):
         w, h = x.size()[2:]
         _, x1, x2, x3, x4, x5, _ = self.backbone(x)
 
+        x5_4 = self.girb5_4(x4, x5) + x4
+        side_out4 = self.sideout_4(x5_4)
+        x5_3 = self.girb5_3(x3, x5) + x3
+
+        x4_3 = self.girb4_3(x3, x4) + x3
+        x4_2 = self.irb4_2(x2 + F.interpolate(self.dim_conv4_2(x4), size=(x2.size()[2:]), mode='bilinear', ))
+
+        x3_2 = self.irb_f3_2(x2 + F.interpolate(self.dim_conv3_2(x3), size=(x2.size()[2:]), mode='bilinear', ))
+        x3_1 = self.irb_f3_1(x1 + F.interpolate(self.dim_conv3_1(x3), size=(x1.size()[2:]), mode='bilinear', ))
+        x2_1 = self.irb_f2_1(x1 + F.interpolate(self.dim_conv2_1(x2), size=(x1.size()[2:]), mode='bilinear', ))
+
+        x4 = self.conv53_43(x5_3 + x4_3)
+        x3 = self.conv52_42_32(x4_2 + x3_2)
+        x2 = self.conv51_41_31_21(x3_1 + x2_1)
+
+        x4 = self.irb_f4(x4 + F.interpolate(self.dim_conv1(x5_4), size=(x4.size()[2:]), mode='bilinear', ))
+        side_out3 = self.sideout_3(x4)
+        x3 = self.irb_f3(x3 + F.interpolate(self.dim_conv2(x4), size=(x3.size()[2:]), mode='bilinear', ))
+        side_out2 = self.sideout_2(x3)
+        x2 = self.irb_f2(x2 + F.interpolate(self.dim_conv3(x3), size=(x2.size()[2:]), mode='bilinear', ))
+        side_out1 = self.sideout_1(x2)
+        side_out1 = F.interpolate(side_out1, size=(w, h), mode='bilinear', align_corners=True)
+        return side_out4, side_out3, side_out2, side_out1
+
+class HASNetS(nn.Module):
+    """
+        v43+s
+    """
+
+    def __init__(self):
+        super().__init__()
+        self.backbone = get_mobilevit_v3_s(load=True)
+        self.girb5_4 = GIRB(256, 320, 4, irb_expand_ratio=2)
+        self.girb5_3 = GIRB(128, 320, 4, irb_expand_ratio=2)
+
+        self.girb4_3 = GIRB(128, 256, 4, irb_expand_ratio=2)
+
+        self.dim_conv4_2 = nn.Conv2d(256, 64, 1)
+        self.irb4_2 = IRB_LW1ConvV4(64, 64 * 2, 64)
+        self.dim_conv3_2 = nn.Conv2d(128, 64, 1)
+        self.irb_f3_2 = IRB_LW1ConvV4(64, 64 * 2, 64)
+        self.dim_conv3_1 = nn.Conv2d(128, 32, 1)
+        self.irb_f3_1 = IRB_LW1ConvV4(32, 32 * 2, 32)
+        self.dim_conv2_1 = nn.Conv2d(64, 32, 1)
+        self.irb_f2_1 = IRB_LW1ConvV4(32, 32 * 2, 32)
+
+        self.conv53_43 = SMC(128)
+        self.conv52_42_32 = SMC(64)
+        self.conv51_41_31_21 = SMC(32)
+
+        self.dim_conv1 = nn.Conv2d(256, 128, 1)
+        self.irb_f4 = IRB_LW1ConvV4(128, 128 * 2, 128)
+        self.dim_conv2 = nn.Conv2d(128, 64, 1)
+        self.irb_f3 = IRB_LW1ConvV4(64, 64 * 2, 64)
+        self.dim_conv3 = nn.Conv2d(64, 32, 1)
+        self.irb_f2 = IRB_LW1ConvV4(32, 32 * 2, 32)
+
+        self.sideout_4 = CBR(256, 1, 3, 1, 1, act=nn.PReLU())
+        self.sideout_3 = CBR(128, 1, 3, 1, 1, act=nn.PReLU())
+        self.sideout_2 = CBR(64, 1, 3, 1, 1, act=nn.PReLU())
+        self.sideout_1 = CBR(32, 1, 3, 1, 1, act=nn.PReLU())
+
+    def forward(self, x):
+        w, h = x.size()[2:]
+        _, x1, x2, x3, x4, x5, _ = self.backbone(x)
+        # print(x1.size(), x2.size(), x3.size(), x4.size(), x5.size())
         x5_4 = self.girb5_4(x4, x5) + x4
         side_out4 = self.sideout_4(x5_4)
         x5_3 = self.girb5_3(x3, x5) + x3
